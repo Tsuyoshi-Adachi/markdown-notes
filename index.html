@@ -1,3 +1,6 @@
+---
+layout: null
+---
 <!doctype html>
 <html lang="ja">
 <head>
@@ -79,11 +82,14 @@
     <article id="document" aria-busy="true" hidden><p class="notice" role="status">文書を読み込んでいます。</p></article>
   </main>
   <noscript>このページを読むにはJavaScriptを有効にしてください。</noscript>
+  {% assign page_paths = site.pages | map: 'path' %}
+  {% assign static_paths = site.static_files | map: 'path' %}
+  {% assign document_paths = page_paths | concat: static_paths | uniq | sort %}
+  <script id="document-paths" type="application/json">{{ document_paths | jsonify | replace: '<', '\u003c' }}</script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const article = document.getElementById('document');
       const rawRoot = 'https://raw.githubusercontent.com/Tsuyoshi-Adachi/markdown-notes/main/';
-      const treeUrl = 'https://api.github.com/repos/Tsuyoshi-Adachi/markdown-notes/git/trees/main?recursive=1';
       const baseUrl = new URL(location.href);
       baseUrl.search = '';
       baseUrl.hash = '';
@@ -120,12 +126,9 @@
         status.hidden = false;
         status.textContent = '文書一覧を読み込んでいます。';
         try {
-          const response = await fetch(treeUrl, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
-          if (!response.ok) throw new Error('List request failed: ' + response.status);
-          const tree = await response.json();
-          if (tree.truncated) throw new Error('Incomplete document list');
-          const paths = tree.tree.filter(item => item.type === 'blob' && validPath(item.path))
-            .map(item => item.path).sort((a, b) => a.localeCompare(b, 'ja'));
+          const storedPaths = JSON.parse(document.getElementById('document-paths').textContent);
+          const paths = [...new Set(storedPaths.map(path => path.replace(/^\/+/, '')))]
+            .filter(validPath).sort((a, b) => a.localeCompare(b, 'ja'));
           list.replaceChildren();
           for (const path of paths) {
             const row = document.createElement('li');
@@ -160,7 +163,7 @@
       const path = new URL(location.href).searchParams.get('doc');
       if (path === null) {
         document.getElementById('document-index').hidden = false;
-        document.getElementById('refresh-list').addEventListener('click', loadList);
+        document.getElementById('refresh-list').addEventListener('click', () => location.reload());
         await loadList();
         return;
       }
