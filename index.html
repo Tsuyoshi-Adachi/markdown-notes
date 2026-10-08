@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>共有ノート</title>
+  <title>文書一覧</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js"></script>
@@ -35,18 +35,141 @@
     eqn { text-align: center; margin: 1em 0; }
     hr { border: 0; border-top: 1px solid #ddd; margin: 2em 0; }
     .notice { color: #666; }
+    [hidden] { display: none !important; }
+    button, input { font: inherit; }
+    button { cursor: pointer; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #333; padding: .45em .8em; line-height: 1.5; }
+    button:hover { background: #f5f5f5; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #90bce1; outline-offset: 3px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; font-size: 14px; }
+    .toolbar a { text-decoration: none; }
+    .toolbar a:hover { text-decoration: underline; }
+    .share-status { color: #3e6651; font-size: 14px; margin: -16px 0 24px; }
+    .share-fallback { margin-bottom: 24px; font-size: 14px; }
+    .share-fallback input { display: block; width: 100%; margin-top: 8px; padding: .5em; border: 1px solid #ccc; border-radius: 5px; }
+    .list-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .list-header h1 { margin: 0; }
+    .list-header button { font-size: 14px; }
+    .document-list { list-style: none; padding: 0; margin-top: 28px; border-top: 1px solid #e5e5e5; }
+    .document-row { display: flex; align-items: center; gap: 18px; justify-content: space-between; border-bottom: 1px solid #e5e5e5; padding: 20px 0; }
+    .document-link { display: block; flex: 1; min-width: 0; text-decoration: none; font-weight: 600; }
+    .document-link:hover { text-decoration: underline; }
+    .document-path { display: block; color: #777; font-size: 13px; font-weight: normal; margin-top: 2px; }
+    .document-row button { flex-shrink: 0; font-size: 13px; }
     @media (max-width: 600px) { body { font-size: 16px; } main { width: calc(100% - 36px); margin: 32px auto 64px; } h1 { font-size: 1.65rem; } th, td { padding: .5em; } }
-    @media print { main { width: 100%; margin: 0; } h2, h3 { break-after: avoid; } table, eqn { break-inside: avoid; } }
+    @media print { main { width: 100%; margin: 0; } h2, h3 { break-after: avoid; } table, eqn { break-inside: avoid; } .toolbar, .share-status, .share-fallback { display: none !important; } }
   </style>
 </head>
 <body>
-  <main><article id="document" aria-busy="true"><p class="notice" role="status">文書を読み込んでいます。</p></article></main>
+  <main>
+    <nav class="toolbar" id="reader-toolbar" aria-label="文書の操作" hidden>
+      <a id="list-link" href="./">← 文書一覧</a>
+      <button id="copy-link" type="button">共有URLをコピー</button>
+    </nav>
+    <p id="share-status" class="share-status" role="status" hidden></p>
+    <div id="share-fallback" class="share-fallback" hidden>
+      <label for="share-url">このURLをコピーして共有してください。</label>
+      <input id="share-url" type="url" readonly>
+    </div>
+    <section id="document-index" aria-label="文書一覧" hidden>
+      <div class="list-header"><h1>文書一覧</h1><button id="refresh-list" type="button">一覧を更新</button></div>
+      <p class="notice">文書を開いて読むか、「共有URLをコピー」でリンクを取得できます。</p>
+      <ul id="document-list" class="document-list"></ul>
+      <p id="list-status" class="notice" role="status">文書一覧を読み込んでいます。</p>
+    </section>
+    <article id="document" aria-busy="true" hidden><p class="notice" role="status">文書を読み込んでいます。</p></article>
+  </main>
   <noscript>このページを読むにはJavaScriptを有効にしてください。</noscript>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const article = document.getElementById('document');
-      const source = 'https://raw.githubusercontent.com/Tsuyoshi-Adachi/markdown-notes/main/README.md';
+      const rawRoot = 'https://raw.githubusercontent.com/Tsuyoshi-Adachi/markdown-notes/main/';
+      const treeUrl = 'https://api.github.com/repos/Tsuyoshi-Adachi/markdown-notes/git/trees/main?recursive=1';
+      const baseUrl = new URL(location.href);
+      baseUrl.search = '';
+      baseUrl.hash = '';
+      const validPath = path => typeof path === 'string' && /\.md$/i.test(path)
+        && !path.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.'));
+      const documentUrl = path => {
+        const url = new URL(baseUrl);
+        url.searchParams.set('doc', path);
+        return url.href;
+      };
+      async function copyUrl(path) {
+        const url = documentUrl(path);
+        const status = document.getElementById('share-status');
+        const fallback = document.getElementById('share-fallback');
+        try {
+          await navigator.clipboard.writeText(url);
+          fallback.hidden = true;
+          status.textContent = '共有URLをコピーしました。';
+          status.hidden = false;
+        } catch (error) {
+          status.hidden = true;
+          const input = document.getElementById('share-url');
+          input.value = url;
+          fallback.hidden = false;
+          input.focus();
+          input.select();
+        }
+      }
+      async function loadList() {
+        const list = document.getElementById('document-list');
+        const status = document.getElementById('list-status');
+        const refresh = document.getElementById('refresh-list');
+        refresh.disabled = true;
+        status.hidden = false;
+        status.textContent = '文書一覧を読み込んでいます。';
+        try {
+          const response = await fetch(treeUrl, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
+          if (!response.ok) throw new Error('List request failed: ' + response.status);
+          const tree = await response.json();
+          if (tree.truncated) throw new Error('Incomplete document list');
+          const paths = tree.tree.filter(item => item.type === 'blob' && validPath(item.path))
+            .map(item => item.path).sort((a, b) => a.localeCompare(b, 'ja'));
+          list.replaceChildren();
+          for (const path of paths) {
+            const row = document.createElement('li');
+            row.className = 'document-row';
+            const link = document.createElement('a');
+            link.className = 'document-link';
+            link.href = documentUrl(path);
+            link.textContent = path.split('/').pop().replace(/\.md$/i, '');
+            if (path.includes('/')) {
+              const folder = document.createElement('span');
+              folder.className = 'document-path';
+              folder.textContent = path.slice(0, path.lastIndexOf('/'));
+              link.append(folder);
+            }
+            const copy = document.createElement('button');
+            copy.type = 'button';
+            copy.textContent = '共有URLをコピー';
+            copy.setAttribute('aria-label', path + ' の共有URLをコピー');
+            copy.addEventListener('click', () => copyUrl(path));
+            row.append(link, copy);
+            list.append(row);
+          }
+          status.hidden = paths.length > 0;
+          status.textContent = paths.length ? '' : '公開されている文書はまだありません。';
+        } catch (error) {
+          status.textContent = '文書一覧を読み込めませんでした。少し待って「一覧を更新」を押してください。';
+          console.error(error);
+        } finally {
+          refresh.disabled = false;
+        }
+      }
+      const path = new URL(location.href).searchParams.get('doc');
+      if (path === null) {
+        document.getElementById('document-index').hidden = false;
+        document.getElementById('refresh-list').addEventListener('click', loadList);
+        await loadList();
+        return;
+      }
+      document.getElementById('reader-toolbar').hidden = false;
+      document.getElementById('list-link').href = baseUrl.href;
+      article.hidden = false;
       try {
+        if (!validPath(path)) throw new Error('Invalid document path');
+        const source = rawRoot + path.split('/').map(encodeURIComponent).join('/');
         const response = await fetch(source, { cache: 'no-cache' });
         if (!response.ok) throw new Error('Document request failed: ' + response.status);
         const markdown = await response.text();
@@ -57,14 +180,33 @@
         });
         article.innerHTML = parser.render(markdown);
         const title = article.querySelector('h1');
-        if (title) document.title = title.textContent;
+        document.title = title ? title.textContent : path.split('/').pop().replace(/\.md$/i, '');
+        document.getElementById('copy-link').addEventListener('click', () => copyUrl(path));
+        article.querySelectorAll('img[src]').forEach(img => {
+          const src = img.getAttribute('src');
+          if (src && !/^(?:[a-z]+:|\/\/)/i.test(src)) img.src = new URL(src, source).href;
+        });
+        article.querySelectorAll('a[href]').forEach(link => {
+          const href = link.getAttribute('href');
+          if (!href || href.startsWith('#') || /^(?:[a-z]+:|\/\/)/i.test(href)) return;
+          const target = new URL(href, source);
+          if (target.href.startsWith(rawRoot)) {
+            const linkedPath = decodeURIComponent(target.pathname.slice(new URL(rawRoot).pathname.length));
+            if (validPath(linkedPath)) {
+              link.href = documentUrl(linkedPath) + target.hash;
+              return;
+            }
+          }
+          link.href = target.href;
+        });
       } catch (error) {
         article.replaceChildren();
         const message = document.createElement('p');
-        message.textContent = '文書を読み込めませんでした。少し待ってからページを再読み込みしてください。';
+        message.textContent = '文書を読み込めませんでした。「文書一覧」から選び直すか、少し待ってページを再読み込みしてください。';
         message.className = 'notice';
         message.setAttribute('role', 'alert');
         article.append(message);
+        document.getElementById('copy-link').disabled = true;
         console.error(error);
       } finally {
         article.setAttribute('aria-busy', 'false');
