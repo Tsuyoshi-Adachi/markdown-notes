@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>共有ノート</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html { background: #fff; color: #242424; }
+    body { margin: 0; font: 17px/1.9 -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif; overflow-wrap: anywhere; }
+    main { width: min(100% - 48px, 760px); margin: 64px auto 100px; }
+    h1, h2, h3, h4 { line-height: 1.5; font-weight: 650; }
+    h1 { font-size: 2rem; margin: 0 0 1em; letter-spacing: .01em; }
+    h2 { font-size: 1.4rem; margin: 1.8em 0 .7em; padding-bottom: .3em; border-bottom: 1px solid #e5e5e5; }
+    h3 { font-size: 1.15rem; margin: 1.4em 0 .6em; }
+    p, ul, ol { margin: .8em 0 1em; }
+    li { margin: .2em 0; }
+    a { color: #245f91; text-underline-offset: .18em; }
+    img { max-width: 100%; height: auto; }
+    table { border-collapse: collapse; margin: 1.3em 0; width: 100%; font-size: .94em; }
+    th, td { text-align: left; vertical-align: top; border: 1px solid #ddd; padding: .65em .8em; }
+    th { background: #f7f7f7; font-weight: 600; }
+    blockquote { border-left: 3px solid #ddd; margin: 1em 0; padding: .1em 1.2em; color: #555; }
+    pre { background: #f6f6f6; padding: 1em; overflow: auto; line-height: 1.6; }
+    code { font: .9em/1.6 ui-monospace, monospace; }
+    :not(pre) > code { background: #f3f3f3; padding: .12em .25em; }
+    .katex-display, eqn { display: block; overflow-x: auto; overflow-y: hidden; padding: .3em 0; }
+    .katex { font-size: 1.15em; }
+    eq { display: inline; }
+    eqn { text-align: center; margin: 1em 0; }
+    hr { border: 0; border-top: 1px solid #ddd; margin: 2em 0; }
+    .notice { color: #666; }
+    @media (max-width: 600px) { body { font-size: 16px; } main { width: calc(100% - 36px); margin: 32px auto 64px; } h1 { font-size: 1.65rem; } th, td { padding: .5em; } }
+    @media print { main { width: 100%; margin: 0; } h2, h3 { break-after: avoid; } table, eqn { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main><article id="document" aria-busy="true"><p class="notice" role="status">文書を読み込んでいます。</p></article></main>
+  <noscript>このページを読むにはJavaScriptを有効にしてください。</noscript>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const article = document.getElementById('document');
+      const source = 'https://raw.githubusercontent.com/Tsuyoshi-Adachi/markdown-notes/main/README.md';
+      try {
+        const response = await fetch(source, { cache: 'no-cache' });
+        if (!response.ok) throw new Error('Document request failed: ' + response.status);
+        const markdown = await response.text();
+        const parser = markdownit({ html: false, linkify: true }).use(texmath, {
+          engine: katex,
+          delimiters: ['dollars', 'brackets'],
+          katexOptions: { trust: false, throwOnError: false }
+        });
+        article.innerHTML = parser.render(markdown);
+        const title = article.querySelector('h1');
+        if (title) document.title = title.textContent;
+      } catch (error) {
+        article.replaceChildren();
+        const message = document.createElement('p');
+        message.textContent = '文書を読み込めませんでした。少し待ってからページを再読み込みしてください。';
+        message.className = 'notice';
+        message.setAttribute('role', 'alert');
+        article.append(message);
+        console.error(error);
+      } finally {
+        article.setAttribute('aria-busy', 'false');
+      }
+    });
+  </script>
+</body>
+</html>
