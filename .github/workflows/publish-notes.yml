@@ -1,0 +1,54 @@
+name: Publish selected notes
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: markdown-notes-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Require private source storage
+        env:
+          SOURCE_IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$SOURCE_IS_PRIVATE" != "true" ]; then
+            echo "::error::原稿の保存先が公開されています。共有停止を有効にするには、先に保存先を非公開にしてください。"
+            exit 1
+          fi
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check selective publishing
+        run: python3 -m unittest discover -s _site_tools -p 'test_*.py' -v
+      - name: Build only published documents
+        run: python3 _site_tools/build.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+          retention-days: 1
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v4
+
